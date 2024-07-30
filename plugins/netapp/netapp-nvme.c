@@ -32,10 +32,11 @@
 #define CREATE_CMD
 #include "netapp-nvme.h"
 
-#define ONTAP_C2_LOG_ID		0xC2
-#define ONTAP_C2_LOG_SIZE	4096
-#define ONTAP_LABEL_LEN		260
-#define ONTAP_NS_PATHLEN	525
+#define ONTAP_C2_LOG_ID				0xC2
+#define ONTAP_C2_LOG_SIZE			4096
+#define ONTAP_LABEL_LEN				260
+#define ONTAP_NS_PATHLEN			525
+#define ONTAP_NS_ADMIN_LABEL_LEN 	254
 
 enum {
 	NNORMAL,
@@ -71,7 +72,8 @@ struct ontapdevice_info {
 	struct nvme_id_ns	ns;
 	unsigned char		uuid[NVME_UUID_LEN];
 	unsigned char		log_data[ONTAP_C2_LOG_SIZE];
-	char			dev[265];
+	char				dev[265];
+	char 				comment[ONTAP_NS_ADMIN_LABEL_LEN];
 };
 
 #define ARRAY_LABEL_LEN		60
@@ -234,7 +236,7 @@ static void netapp_smdevice_json(struct json_object *devices, char *devname,
 
 static void netapp_ontapdevice_json(struct json_object *devices, char *devname,
 		char *vsname, char *nspath, int nsid, char *uuid,
-		char *size, long long lba, long long nsze)
+		char *size, long long lba, long long nsze, char* comment)
 {
 	struct json_object *device_attrs;
 
@@ -247,6 +249,7 @@ static void netapp_ontapdevice_json(struct json_object *devices, char *devname,
 	json_object_add_value_string(device_attrs, "Size", size);
 	json_object_add_value_int(device_attrs, "LBA_Data_Size", lba);
 	json_object_add_value_int(device_attrs, "Namespace_Size", nsze);
+	json_object_add_value_string(device_attrs, "Admin Label", comment);
 
 	json_array_add_value_object(devices, device_attrs);
 }
@@ -328,8 +331,8 @@ static void netapp_ontapdevices_print(struct ontapdevice_info *devices,
 	char uuid_str[37] = " ";
 	int i;
 
-	char basestr[] = "%s, Vserver %s, Namespace Path %s, NSID %d, UUID %s, %s\n";
-	char columnstr[] = "%-16s %-25s %-50s %-4d %-38s %-9s\n";
+	char basestr[] = "%s, Vserver %s, Namespace Path %s, NSID %d, UUID %s, %s, %s\n";
+	char columnstr[] = "%-16s %-25s %-50s %-4d %-38s %-9s %-30s\n";
 
 	/* default to 'normal' output format */
 	char *formatstr = basestr;
@@ -337,14 +340,14 @@ static void netapp_ontapdevices_print(struct ontapdevice_info *devices,
 	if (format == NCOLUMN) {
 		/* change output string and print column headers */
 		formatstr = columnstr;
-		printf("%-16s %-25s %-50s %-4s %-38s %-9s\n",
+		printf("%-16s %-25s %-50s %-4s %-38s %-9s %-30s\n",
 				"Device", "Vserver", "Namespace Path",
-				"NSID", "UUID", "Size");
-		printf("%-16s %-25s %-50s %-4s %-38s %-9s\n",
+				"NSID", "UUID", "Size", "Admin Label");
+		printf("%-16s %-25s %-50s %-4s %-38s %-9s %-30s\n",
 				"----------------", "-------------------------",
 				"--------------------------------------------------",
 				"----", "--------------------------------------",
-				"---------");
+				"---------", "------------------------------------");
 	} else if (format == NJSON) {
 		/* prepare for json output */
 		root = json_create_object();
@@ -361,10 +364,10 @@ static void netapp_ontapdevices_print(struct ontapdevice_info *devices,
 			netapp_ontapdevice_json(json_devices, devices[i].dev,
 					vsname, nspath, devices[i].nsid,
 					uuid_str, size, lba,
-					le64_to_cpu(devices[i].ns.nsze));
+					le64_to_cpu(devices[i].ns.nsze), devices[i].comment);
 		} else
 			printf(formatstr, devices[i].dev, vsname, nspath,
-					devices[i].nsid, uuid_str, size);
+					devices[i].nsid, uuid_str, size, devices[i].comment);
 	}
 
 	if (format == NJSON) {
@@ -485,6 +488,16 @@ static int netapp_ontapdevices_get_info(int fd, struct ontapdevice_info *item,
 	err = nvme_get_ontap_c2_log(fd, item->nsid, item->log_data, ONTAP_C2_LOG_SIZE);
 	if (err) {
 		fprintf(stderr, "Unable to get log page data for %s (%s)\n",
+			dev, err < 0 ? strerror(-err) :
+			nvme_status_to_string(err, false));
+		return 0;
+	}
+
+	// check ctrl id 
+	err = nvme_get_features_namespace_admin_label(fd, NVME_GET_FEATURES_SEL_SAVED, 
+								item->nsid, item->comment, ONTAP_NS_ADMIN_LABEL_LEN);
+	if (err) {
+		fprintf(stderr, "Unable to get namespace admin label for %s (%s)\n",
 			dev, err < 0 ? strerror(-err) :
 			nvme_status_to_string(err, false));
 		return 0;
