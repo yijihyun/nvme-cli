@@ -4752,10 +4752,10 @@ static void stdout_list_item(nvme_ns_t n)
 	stdout_dev_full_path(n, devname, sizeof(devname));
 	stdout_generic_full_path(n, genname, sizeof(genname));
 
-	printf("%-21s %-21s %-20s %-40s %#-10x %-26s %-16s %-8s\n",
+	printf("%-21s %-21s %-20s %-40s %#-10x %-26s %-16s %-8s %-19s\n",
 		devname, genname, nvme_ns_get_serial(n),
 		nvme_ns_get_model(n), nvme_ns_get_nsid(n), usage, format,
-		nvme_ns_get_firmware(n));
+		nvme_ns_get_firmware(n), nvme_ns_get_admin_label(n));
 }
 
 static bool stdout_simple_ns(const char *name, void *arg)
@@ -4764,7 +4764,7 @@ static bool stdout_simple_ns(const char *name, void *arg)
 	nvme_ns_t n;
 
 	n = htable_ns_get(&res->ht_n, name);
-	stdout_list_item(n);
+    if(nvme_ns_get_ctrl(n)) stdout_list_item(n);
 
 	return true;
 }
@@ -4775,10 +4775,10 @@ static void stdout_simple_list(nvme_root_t r)
 
 	nvme_resources_init(r, &res);
 
-	printf("%-21s %-21s %-20s %-40s %-10s %-26s %-16s %-8s\n",
-	       "Node", "Generic", "SN", "Model", "Namespace", "Usage", "Format", "FW Rev");
-	printf("%-.21s %-.21s %-.20s %-.40s %-.10s %-.26s %-.16s %-.8s\n",
-	       dash, dash, dash, dash, dash, dash, dash, dash);
+	printf("%-21s %-21s %-20s %-40s %-10s %-26s %-16s %-8s %-19s\n",
+	       "Node", "Generic", "SN", "Model", "Namespace", "Usage", "Format", "FW Rev", "Admin Label");
+	printf("%-.21s %-.21s %-.20s %-.40s %-.10s %-.26s %-.16s %-.8s %-.19s\n",
+	       dash, dash, dash, dash, dash, dash, dash, dash, dash);
 	strset_iterate(&res.namespaces, stdout_simple_ns, &res);
 
 	nvme_resources_free(&res);
